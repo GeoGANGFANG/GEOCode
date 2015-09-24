@@ -305,8 +305,8 @@ int main(int argc, char** argv)
     DblNumMat Bc(LEN, COUNT);
     
     //iC( ddgemm(2*SF_PI*dx, sx, ktmp, 0.0, B));
-    iC( ddgemm(2*SF_PI*dx, sx, ktmp, 0.0, B));
-    iC( ddgemm(2*SF_PI*dx, sx, ktmpc, 0.0, Bc));
+    iC( ddgemm(2.0*SF_PI*dx, sx, ktmp, 0.0, B));
+    iC( ddgemm(2.0*SF_PI*dx, sx, ktmpc, 0.0, Bc));
 
     for (int k=0; k<B._m*B._n; k++) B._data[k]=sin(B._data[k]);
     for (int k=0; k<Bc._m*Bc._n; k++) Bc._data[k]=sin(Bc._data[k]);

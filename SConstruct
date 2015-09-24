@@ -7,7 +7,7 @@ progs = '''
 
 # anisglfd2pml
 
-ccprogs = ''' oneapp '''
+ccprogs = ''' oneapp lfdcsgm2'''
 # anisglfdcx2_7 anisglfdcz2_7 wlslfdcx2tw2 wlslfdcz2tw2
 
 #pyprogs = 'fft'

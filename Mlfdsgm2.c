@@ -32,14 +32,14 @@
 static float ***G;
 static int *sx, *sz;
 static int LEN;
-static marg;
+static int marg;
 
 static float fd(float **data, int ix, int iz)
 /*< Lowrank finite difference >*/
 {
     float res = 0.0;
     int il;
-    for (il=0; il<size; il++) {
+    for (il=0; il<LEN; il++) {
 	res += 0.5*( data[ix-sx[il]][iz-sz[il]] + data[ix+sx[il]][iz+sz[il]] )*G[il][ix][iz];
     }
     return res;
@@ -75,7 +75,7 @@ int main(int argc, char* argv[])
     float ox, oz;
     
     /* caculate arrays */
-    float **pn1, **pn0;
+    float **pn1, **pn0, **pn2;
 
     /* source */
     spara sp={0};
@@ -115,7 +115,7 @@ int main(int argc, char* argv[])
     
     if (!sf_getbool("srcdecay", &srcdecay)) srcdecay=false;
     /* source decay */
-    if (!sf_getint("srcrange", &srcreange)) srcrange=10;
+    if (!sf_getint("srcrange", &srcrange)) srcrange=10;
     /* source decay range */
     if (!sf_getfloat("srctrunc", &srctrunc)) srctrunc=100;
     /* trunc source after srctrunc time (s) */
@@ -125,11 +125,11 @@ int main(int argc, char* argv[])
     if (!sf_getbool("freesurface", &freesurface)) freesurface=false;
     
     /* Read/Write axes */
-    at = sf_iaxa(fsource, 1); nt = sf_n(at); dt = sf_d(at);
-    ax = sf_iaxs(fvel, 2);    nxb = sf_n(ax); dx = sf_d(ax); ox = sf_o(ax);
-    az = sf_iaxs(fvel, 1);    nzb = sf_n(ax); dz = sf_d(az); oz = sf_o(az);
+    at = sf_iaxa(fsource, 1); nt = sf_n(at);  dt = sf_d(at);
+    ax = sf_iaxa(fvel, 2);    nxb = sf_n(ax); dx = sf_d(ax); ox = sf_o(ax);
+    az = sf_iaxa(fvel, 1);    nzb = sf_n(ax); dz = sf_d(az); oz = sf_o(az);
 
-    if (!sf_histint(fGx, "n1", &nxz)) sf_error("No n1= in input");
+    if (!sf_histint(fG, "n1", &nxz)) sf_error("No n1= in input");
     if (nxz != nxb*nzb) sf_error (" Need nxz = nxb*nzb");
     if (!sf_histint(fG, "n2", &LEN)) sf_error("No n2= in input");
     
@@ -203,15 +203,20 @@ int main(int argc, char* argv[])
     sf_oaxa(fwf, ax, 2);
     sf_oaxa(fwf, at, 3);
     
+    /* read souce */
+    src = sf_floatalloc(nt);
+    sf_floatread(src, nt, fsource);
+
     /* read model */
     vel = sf_floatalloc2(nzb, nxb);
     sf_floatread(vel[0], nxz, fvel);
 
     pn1 = sf_floatalloc2(nzb, nxb);
     pn0 = sf_floatalloc2(nzb, nxb);
+    pn2 = sf_floatalloc2(nzb, nxb);
 
     record = sf_floatalloc2(nt, nx);
-    
+
 #ifdef _OPENMP
 #pragma omp parallel for private(ix, iz)
 #endif
@@ -230,9 +235,106 @@ int main(int argc, char* argv[])
 	}
     }    
 
+#ifdef _OPENMP
+#pragma omp parallel for private(ix, iz)
+#endif
+    for (ix=0; ix<nxb; ix++) {
+	for (iz=0; iz<nzb; iz++) {
+	    pn2[ix][iz] = 0.0;
+	}
+    }    
+ 
+#ifdef _OPENMP
+#pragma omp parallel for private(ix, it)
+#endif 
+    for (it = 0; it < nt; it++) {
+	for (ix = 0; ix < nx; ix++) {
+	    record[ix][it] = 0.0;
+	}
+    }
+ 
+    
+    /* MAIN LOOP */
+    sp.trunc = srctrunc;
+    sp.srange= srcrange;
+    sp.alpha = 0.5;
+    sp.decay = srcdecay?1:0;
+
+#ifdef _OPENMP
+#pragma omp parallel  
+    {
+    nth = omp_get_num_threads();
+    }
+#endif
+ 
+    if (verb) {
+	sf_warning("============================");
+	sf_warning(">>>> Using %d threads <<<<<", nth);
+	sf_warning("nx=%d nz=%d nt=%d", nx, nz, nt);
+	sf_warning("dx=%f dz=%f dt=%f", dx, dz, dt);
+	sf_warning("LEN=%d marg=%d ", LEN, marg);
+	sf_warning("sp.decay=%d sp.srange=%d verb=%d",sp.decay,sp.srange,verb);
+	sf_warning("----------------------------");
+	for (ix=0; ix<LEN; ix++) {
+	    sf_warning("[sx, sz]=[%d, %d] G=%f", sx[ix], sz[ix], G[ix][0][0]);
+	}
+	sf_warning("============================");
+    }
+
+    for (it=0; it<nt; it++) {
+	if (verb) sf_warning("it=%d/%d;", it, nt-1);
+
+	if ((it*dt)<=sp.trunc) {
+	    explsourcet(pn1, src, it, dt, spx+marg, spz+marg, nxb, nzb, &sp);
+	}
+
+#ifdef _OPENMP
+#pragma omp parallel for private(ix, iz)
+#endif
+	for (ix=marg; ix<nx+marg; ix++) {
+	    for (iz=marg; iz<nz+marg; iz++) {
+		pn2[ix][iz] = fd(pn1, ix, iz) - pn0[ix][iz];
+	    }
+	}
+	
+	if ( it%snapinter==0) {
+	    for (ix=marg; ix<nx+marg; ix++) {
+		sf_floatwrite(pn2[ix]+marg, nz, fwf);
+	    }
+	}
+
+#ifdef _OPENMP
+#pragma omp parallel for private(ix)
+#endif
+	for (ix=0; ix<nx; ix++) {
+	    record[ix][it] = pn2[ix+marg][marg+gp];
+	}
 
 
+	
+#ifdef _OPENMP
+#pragma omp parallel for private(ix, iz)
+#endif
+	for (ix=marg; ix<nx+marg; ix++) {
+	    for (iz=marg; iz<nz+marg; iz++) {
+		pn0[ix][iz] = pn1[ix][iz];
+		pn1[ix][iz] = pn2[ix][iz];
+	    }
+	}
+    } /*End of loop time */
+    if (verb) sf_warning(".");
 
+    for (ix=0; ix<nx; ix++) {
+	sf_floatwrite(record[ix], nt, frec);
+    }
+    
+    tend = clock();
+    duration=(double)(tend-tstart)/CLOCKS_PER_SEC;
+    sf_warning(">> the CPU time of sflfdsgm2 is %f second. <<", duration);
+    exit(0);
+    
+}
+    
 
 
 

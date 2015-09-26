@@ -123,11 +123,12 @@ int main(int argc, char** argv)
 
     sf_warning("=======================");
     sf_warning(" 2D Lowrank FD coefficients with weighted least square and sigma filter");
-    sf_warning("weight=%d",weight);
+    sf_warning("weight=%d", weight);
     sf_warning("wavnumcut=%f", wavnumcut);
     sf_warning("n=%d",n);
     sf_warning("m=%d",m);
     sf_warning("dfrq=%f", dfrq);
+    sf_warning("dkx=%f, dkz=%f", dkx, dkz);
     switch (filter) {
 	case 1 : // sigma filter
 	    sf_warning("filter=%d, sinc filter, p=%f", filter, p);
@@ -137,8 +138,8 @@ int main(int argc, char** argv)
 	    break;
 	case 3 : // exponential filter
 	    sf_warning("filter=%d, exp filter, p=%f",  filter, p);
-	default :
-	    sf_warning("filter=%d, sinc filter, p=%f", filter, p);
+	default:
+	    sf_warning("filter=%d, no filter p=%f", filter, p);
     } 
     sf_warning("sigm_p=%f", p);
     sf_warning("=======================");
@@ -157,7 +158,7 @@ int main(int argc, char** argv)
     int SMK = 0;
     for (int ix=0; ix<nx; ix++) {
 	kx1 = kx0+ix*dkx;
-	for (int iz=0; ix < nx; ix++) {
+	for (int iz=0; iz<nx; iz++) {
 	    kz1 = kz0+iz*dkz;
 	    ks[i] = sqrtf(kx1*kx1+kz1*kz1);
 	    if (((kx1/a)*(kx1/a)+(kz1/b)*(kz1/b))<1.0) COUNT++;
@@ -302,35 +303,37 @@ int main(int argc, char** argv)
     iC(ddgemm(1.0,M1,tmpG, 0.0,G));
 
     DblNumMat sigm(LEN, 1);
+    sigm._data[0] = 1.0 ;
     switch (filter) {
 	case 1 : // sigma filter
-	    for (int k=0; k<LEN; k++) {
-		sigm._data[k] = sin(sx._data[k]*SF_PI/size)/(sx._data[k]*SF_PI/size)*sin(sz._data[k]*SF_PI/size)/(sz._data[k]*SF_PI/size);
+	    for (int k=1; k<LEN; k++) {
+		sigm._data[k] = sin(sx._data[k]*SF_PI/(size-1))/(sx._data[k]*SF_PI/(size-1))*sin(sz._data[k]*SF_PI/(size-1))/(sz._data[k]*SF_PI/(size-1));
 		
 	    }
 	    break;
 	case 2 : // cose filter
-	    for (int k=0; k<LEN; k++) {
-		sigm._data[k] = 0.5*(1+cos(sx._data[k]*SF_PI/size))*0.5*(1+cos(sz._data[k]*SF_PI/size));
+	    for (int k=1; k<LEN; k++) {
+		sigm._data[k] = 0.5*(1+cos(sx._data[k]*SF_PI/(size-1)))*0.5*(1+cos(sz._data[k]*SF_PI/(size-1)));
 	    }
 	    break;
 	case 3 : // exponential filter
 	    double alpha;
 	    alpha = -1.0*log(1.0e-15);
 	    sf_warning("ALPHA=%g", alpha);
-	    for (int k=1; k<LEN; k++) {
-		sigm._data[k] = exp(-1.0*alpha*pow(sx._data[k]/size,2.0))*exp(-1.0*alpha*pow(sz._data[k]/size,2.0));
+	    for (int k=0; k<LEN; k++) {
+		sigm._data[k] = exp(-1.0*alpha*pow(sx._data[k]/(size-1),2.0))*exp(-1.0*alpha*pow(sz._data[k]/(size-1),2.0));
 	    }
 	default :
-	   for (int k=0; k<LEN; k++) {
+	   for (int k=1; k<LEN; k++) {
 		sigm._data[k] = 1.0; 
 	    }
     } 
 
-    for(int k=0; k<LEN; k++) {
+    for(int k=1; k<LEN; k++) {
 	sigm._data[k] = pow(sigm._data[k], p);
     }
-
+    cerr<<"sigm="; for(int k=0; k<LEN; k++) cerr<<sigm._data[k]<<", "; 
+    cerr<<endl;
     if(filter!=0) {
 	for(int k=0; k<LEN; k++) {
 	    for(int ix=0; ix<nxz; ix++) {
@@ -385,7 +388,7 @@ int main(int argc, char** argv)
     std::valarray<float> fs(LEN);
     ldat = sx.data();
     for (int k=0; k < LEN; k++) {
-         fs[k] = (ldat[k]+0.5);
+         fs[k] = (ldat[k]);
     } 
     fsx << fs;
     ldat = sz.data();

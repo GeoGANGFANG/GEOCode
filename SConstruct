@@ -2,12 +2,11 @@ import os, sys, re, string
 sys.path.append('../../framework')
 import bldutil
 
-progs = ''' 
-'''
+progs = '''lfdsgm2 '''
 
 # anisglfd2pml
 
-ccprogs = ''' oneapp lfdcsgm2'''
+ccprogs = ''' oneapp lfdcsgm2 '''
 # anisglfdcx2_7 anisglfdcz2_7 wlslfdcx2tw2 wlslfdcz2tw2
 
 #pyprogs = 'fft'
